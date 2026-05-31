@@ -102,9 +102,19 @@ def show_dashboard():
         with col_e2:
             st.download_button("📥 Baixar PDF do Mês", exportar_pdf(df_filtrado, f"Relatório {mes_selecionado}"), f"relatorio_{mes_selecionado}.pdf", "application/pdf")
         
-        st.dataframe(df_filtrado[['data', 'produto', 'tipo', 'quantidade', 'valor_total']], use_container_width=True)
+        with st.expander("📂 Ver Detalhes"):
+            st.dataframe(df_filtrado[['data', 'produto', 'tipo', 'quantidade', 'valor_total']], use_container_width=True)
     else:
         st.info("Nenhuma movimentação registrada.")
+
+    # GRÁFICO (RESTAURADO)
+    if not df_estoque.empty:
+        st.markdown("### 📊 Estoque Atual")
+        df_chart = df_estoque[df_estoque['quantidade'] > 0].copy()
+        if not df_chart.empty:
+            df_chart = df_chart.groupby('categoria')['quantidade'].sum().reset_index()
+            fig = px.pie(df_chart, values='quantidade', names='categoria', hole=0.3)
+            st.plotly_chart(fig, use_container_width=True)
 
 # --- ESTOQUE ---
 def page_estoque():
