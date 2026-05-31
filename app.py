@@ -44,42 +44,38 @@ def show_dashboard():
         fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE (COM EDIÇÃO SEPARADA) ---
+# --- ESTOQUE (CORRIGIDO E OTIMIZADO) ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
-    # Adicionada a aba 4: "✏️ Editar Produto"
+    
+    # BUSCA OS DADOS FRESCOS DO BANCO AQUI, NO INÍCIO DA FUNÇÃO
+    conn = get_connection()
+    df = pd.read_sql("SELECT * FROM estoque", conn)
+    conn.close()
+    
     tab1, tab2, tab3, tab4 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Colar Dados", "✏️ Editar Produto"])
     
     with tab1:
-        conn = get_connection()
-        df = pd.read_sql("SELECT * FROM estoque", conn)
-        
         if not df.empty:
-            st.info("💡 Clique na tabela para editar valores rápidos ou use a aba 'Editar Produto' para edições completas.")
+            st.info("💡 Edite e clique em 'Salvar Alterações Rápidas'.")
             edited_df = st.data_editor(
                 df,
-                column_config={
-                    "quantidade": st.column_config.ProgressColumn(
-                        "Estoque Atual", help="Nível do estoque", format="%f", min_value=0, max_value=500,
-                    ),
-                    "id": None, 
-                },
-                use_container_width=True,
-                hide_index=True
+                column_config={"id": None, "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%f", min_value=0, max_value=500)},
+                use_container_width=True, hide_index=True
             )
             
             if st.button("💾 Salvar Alterações Rápidas"):
+                conn = get_connection()
                 cursor = conn.cursor()
                 for index, row in edited_df.iterrows():
-                    cursor.execute('''UPDATE estoque SET quantidade=?, preco_compra=?, preco_venda=? 
-                                      WHERE id=?''', 
-                                   (row['quantidade'], row['preco_compra'], row['preco_venda'], row['id']))
+                    cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
+                                   (row['produto'], row['categoria'], row['quantidade'], row['preco_compra'], row['preco_venda'], row['id']))
                 conn.commit()
+                conn.close()
                 st.success("Estoque atualizado!")
                 st.rerun()
         else:
             st.info("Nenhum material cadastrado.")
-        conn.close()
 
     with tab2:
         with st.form("form_novo"):
@@ -94,11 +90,12 @@ def page_estoque():
                     conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
                                  (nome, cat, qtd, p_compra, p_venda))
                     conn.commit()
+                    conn.close()
                     st.success("Produto cadastrado!")
                     st.rerun()
                 except:
                     st.error("Erro: Produto já existe.")
-                conn.close()
+                    conn.close()
 
     with tab3:
         st.subheader("Colar Dados (Bulk Import)")
@@ -119,15 +116,10 @@ def page_estoque():
 
     with tab4:
         st.subheader("✏️ Editar Produto Selecionado")
-        conn = get_connection()
-        df_produtos = pd.read_sql("SELECT * FROM estoque", conn)
-        
-        if not df_produtos.empty:
-            lista_produtos = df_produtos['produto'].tolist()
+        if not df.empty:
+            lista_produtos = df['produto'].tolist()
             selecionado = st.selectbox("Selecione o produto que deseja editar", lista_produtos)
-            
-            # Pega os dados do produto selecionado
-            dados_prod = df_produtos[df_produtos['produto'] == selecionado].iloc[0]
+            dados_prod = df[df['produto'] == selecionado].iloc[0]
             
             with st.form("form_edicao"):
                 n_nome = st.text_input("Novo Nome", value=dados_prod['produto'])
@@ -139,15 +131,16 @@ def page_estoque():
                 n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']))
                 
                 if st.form_submit_button("Atualizar Produto"):
+                    conn = get_connection()
                     cursor = conn.cursor()
-                    cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? 
-                                      WHERE id=?''', (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, dados_prod['id']))
+                    cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
+                                   (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, dados_prod['id']))
                     conn.commit()
+                    conn.close()
                     st.success("Produto atualizado com sucesso!")
                     st.rerun()
         else:
             st.warning("Cadastre produtos para poder editar.")
-        conn.close()
 
 # --- VENDAS E COMPRAS ---
 def page_transacoes():
