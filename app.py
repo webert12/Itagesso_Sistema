@@ -2,7 +2,6 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
-import io
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide")
@@ -45,7 +44,7 @@ def show_dashboard():
         fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE ---
+# --- ESTOQUE (COM EDIÇÃO E BARRA DE STATUS) ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
     tab1, tab2, tab3 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Colar Dados"])
@@ -53,11 +52,41 @@ def page_estoque():
     with tab1:
         conn = get_connection()
         df = pd.read_sql("SELECT * FROM estoque", conn)
-        conn.close()
+        
         if not df.empty:
-            st.dataframe(df, use_container_width=True)
+            st.info("💡 Dica: Clique na tabela para editar quantidades e preços. Clique em 'Salvar Alterações' abaixo.")
+            
+            # Editor de Dados com Barra de Progresso
+            edited_df = st.data_editor(
+                df,
+                column_config={
+                    "quantidade": st.column_config.ProgressColumn(
+                        "Estoque Atual",
+                        help="Nível do estoque (max 500 para visualização)",
+                        format="%f",
+                        min_value=0,
+                        max_value=500, # Define o que é 'cheio' para o gráfico
+                    ),
+                    "id": None, # Esconde o ID
+                    "produto": st.column_config.TextColumn("Produto", disabled=True), # Nome bloqueado para segurança
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            if st.button("💾 Salvar Alterações no Estoque"):
+                # Atualiza o banco com os dados editados
+                for index, row in edited_df.iterrows():
+                    cursor = conn.cursor()
+                    cursor.execute('''UPDATE estoque SET quantidade=?, preco_compra=?, preco_venda=? 
+                                      WHERE produto=?''', 
+                                   (row['quantidade'], row['preco_compra'], row['preco_venda'], row['produto']))
+                conn.commit()
+                st.success("Estoque atualizado!")
+                st.rerun()
         else:
             st.info("Nenhum material cadastrado.")
+        conn.close()
 
     with tab2:
         with st.form("form_novo"):
@@ -80,27 +109,19 @@ def page_estoque():
 
     with tab3:
         st.subheader("Colar Dados (Bulk Import)")
-        st.info("Cole os dados no formato: nome,categoria,quantidade,preco_compra,preco_venda (uma linha por produto)")
-        
-        texto_colado = st.text_area("Cole aqui (ex: Gesso,Gesso,10,5.0,20.0)", height=200)
-        
-        if st.button("Processar e Salvar Produtos"):
+        texto_colado = st.text_area("Cole aqui (formato: nome,categoria,quantidade,preco_compra,preco_venda)", height=200)
+        if st.button("Processar e Salvar"):
             if texto_colado:
                 linhas = texto_colado.strip().split('\n')
                 conn = get_connection()
-                sucesso = 0
                 for linha in linhas:
-                    try:
-                        partes = [p.strip() for p in linha.split(',')]
-                        if len(partes) == 5:
-                            conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
-                                         (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
-                            sucesso += 1
-                    except:
-                        st.warning(f"Erro ao processar linha: {linha}")
+                    partes = [p.strip() for p in linha.split(',')]
+                    if len(partes) == 5:
+                        conn.execute("INSERT OR REPLACE INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
+                                     (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
                 conn.commit()
                 conn.close()
-                st.success(f"{sucesso} produtos salvos com sucesso!")
+                st.success("Importado com sucesso!")
                 st.rerun()
 
 # --- VENDAS E COMPRAS ---
@@ -122,12 +143,10 @@ def page_transacoes():
             cursor = conn.cursor()
             cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
                            (prod_selecionado, tipo, qtd, valor))
-            
             if tipo == "Venda":
                 cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
             else:
                 cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
-            
             conn.commit()
             conn.close()
             st.success(f"Estoque atualizado!")
