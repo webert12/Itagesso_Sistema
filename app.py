@@ -44,11 +44,10 @@ def show_dashboard():
         fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE (CORRIGIDO E OTIMIZADO) ---
+# --- ESTOQUE ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
     
-    # BUSCA OS DADOS FRESCOS DO BANCO AQUI, NO INÍCIO DA FUNÇÃO
     conn = get_connection()
     df = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
@@ -150,7 +149,7 @@ def page_estoque():
         else:
             st.warning("Cadastre produtos para poder editar.")
 
-# --- VENDAS E COMPRAS ---
+# --- VENDAS E COMPRAS (CORRIGIDO) ---
 def page_transacoes():
     st.title("💸 Vendas e Compras")
     conn = get_connection()
@@ -162,20 +161,24 @@ def page_transacoes():
     else:
         tipo = st.selectbox("Tipo", ["Venda", "Compra"])
         prod_selecionado = st.selectbox("Selecione o Produto", produtos)
-        qtd = st.number_input("Quantidade", min_value=0.1)
-        valor = st.number_input("Valor Total da Operação (R$)", min_value=0.0)
+        qtd = st.number_input("Quantidade", min_value=0.1, step=1.0)
+        preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, step=0.1)
+        
+        # O SISTEMA AGORA CALCULA O TOTAL
+        total_calculado = qtd * preco_unitario
+        st.write(f"### Valor Total da Operação: R$ {total_calculado:,.2f}")
         
         if st.button("Confirmar Movimentação"):
             cursor = conn.cursor()
             cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
-                           (prod_selecionado, tipo, qtd, valor))
+                           (prod_selecionado, tipo, qtd, total_calculado))
             if tipo == "Venda":
                 cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
             else:
                 cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
             conn.commit()
             conn.close()
-            st.success(f"Estoque atualizado!")
+            st.success(f"Estoque e Saldo atualizados com sucesso!")
             st.rerun()
     conn.close()
 
