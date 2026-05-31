@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
+import io
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide")
@@ -31,7 +32,6 @@ def show_dashboard():
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
     
-    # Cálculos
     total_vendas = df_mov[df_mov['tipo'] == 'Venda']['valor_total'].sum()
     total_compras = df_mov[df_mov['tipo'] == 'Compra']['valor_total'].sum()
     
@@ -42,14 +42,13 @@ def show_dashboard():
     
     if not df_estoque.empty:
         st.subheader("Distribuição do Estoque")
-        fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque por Categoria")
+        fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE (COM ABAS) ---
+# --- ESTOQUE ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
-    
-    tab1, tab2, tab3 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Importar/Exportar"])
+    tab1, tab2, tab3 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Colar Dados"])
     
     with tab1:
         conn = get_connection()
@@ -76,29 +75,33 @@ def page_estoque():
                     st.success("Produto cadastrado!")
                     st.rerun()
                 except:
-                    st.error("Erro: Este produto já existe.")
+                    st.error("Erro: Produto já existe.")
                 conn.close()
 
     with tab3:
-        st.subheader("Importar CSV")
-        uploaded_file = st.file_uploader("Escolha um arquivo CSV", type="csv")
-        if uploaded_file is not None:
-            df_import = pd.read_csv(uploaded_file)
-            if st.button("Confirmar Importação"):
-                conn = get_connection()
-                df_import.to_sql('estoque', conn, if_exists='append', index=False)
-                conn.close()
-                st.success("Produtos importados!")
-                st.rerun()
+        st.subheader("Colar Dados (Bulk Import)")
+        st.info("Cole os dados no formato: nome,categoria,quantidade,preco_compra,preco_venda (uma linha por produto)")
         
-        st.markdown("---")
-        st.subheader("Exportar Estoque")
-        conn = get_connection()
-        df_export = pd.read_sql("SELECT * FROM estoque", conn)
-        conn.close()
-        if not df_export.empty:
-            csv = df_export.to_csv(index=False).encode('utf-8')
-            st.download_button("Baixar Estoque (.csv)", data=csv, file_name="estoque_itagesso.csv", mime="text/csv")
+        texto_colado = st.text_area("Cole aqui (ex: Gesso,Gesso,10,5.0,20.0)", height=200)
+        
+        if st.button("Processar e Salvar Produtos"):
+            if texto_colado:
+                linhas = texto_colado.strip().split('\n')
+                conn = get_connection()
+                sucesso = 0
+                for linha in linhas:
+                    try:
+                        partes = [p.strip() for p in linha.split(',')]
+                        if len(partes) == 5:
+                            conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
+                                         (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
+                            sucesso += 1
+                    except:
+                        st.warning(f"Erro ao processar linha: {linha}")
+                conn.commit()
+                conn.close()
+                st.success(f"{sucesso} produtos salvos com sucesso!")
+                st.rerun()
 
 # --- VENDAS E COMPRAS ---
 def page_transacoes():
@@ -126,6 +129,7 @@ def page_transacoes():
                 cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
             
             conn.commit()
+            conn.close()
             st.success(f"Estoque atualizado!")
             st.rerun()
     conn.close()
