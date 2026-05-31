@@ -2,9 +2,10 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
+from datetime import datetime
 
 # --- CONFIGURAÇÃO ---
-st.set_page_config(page_title="ItaGesso Gestão", layout="wide")
+st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
 
 def get_connection():
     return sqlite3.connect('itagesso.db', check_same_thread=False)
@@ -23,30 +24,48 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
 conn.commit()
 conn.close()
 
-# --- DASHBOARD ---
+# --- DASHBOARD MENSAL ---
 def show_dashboard():
-    st.title("📊 Painel ItaGesso")
+    st.markdown("# 🏛️ ItaGesso | Painel de Controle")
+    st.markdown("---")
+    
     conn = get_connection()
     df_mov = pd.read_sql("SELECT * FROM movimentacoes", conn)
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
     
-    total_vendas = df_mov[df_mov['tipo'] == 'Venda']['valor_total'].sum()
-    total_compras = df_mov[df_mov['tipo'] == 'Compra']['valor_total'].sum()
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Receita Total", f"R$ {total_vendas:,.2f}")
-    c2.metric("Despesas Totais", f"R$ {total_compras:,.2f}")
-    c3.metric("Saldo Estimado", f"R$ {total_vendas - total_compras:,.2f}")
-    
+    if not df_mov.empty:
+        # Preparação de datas para filtro
+        df_mov['data'] = pd.to_datetime(df_mov['data'])
+        df_mov['mes_ano'] = df_mov['data'].dt.strftime('%Y-%m')
+        
+        # Filtro de Mês
+        meses_disponiveis = sorted(df_mov['mes_ano'].unique(), reverse=True)
+        mes_selecionado = st.selectbox("📅 Selecione o mês para análise:", meses_disponiveis)
+        
+        df_filtrado = df_mov[df_mov['mes_ano'] == mes_selecionado]
+        
+        total_vendas = df_filtrado[df_filtrado['tipo'] == 'Venda']['valor_total'].sum()
+        total_compras = df_filtrado[df_filtrado['tipo'] == 'Compra']['valor_total'].sum()
+        saldo = total_vendas - total_compras
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("💰 Receita no Mês", f"R$ {total_vendas:,.2f}")
+        c2.metric("💸 Despesas no Mês", f"R$ {total_compras:,.2f}")
+        c3.metric("📈 Saldo Mensal", f"R$ {saldo:,.2f}")
+    else:
+        st.info("Nenhuma movimentação registrada até o momento.")
+
     if not df_estoque.empty:
-        st.subheader("Distribuição do Estoque")
-        fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
+        st.markdown("### 📊 Composição Atual do Estoque")
+        fig = px.pie(df_estoque, values='quantidade', names='categoria', 
+                     title="Distribuição por Categoria",
+                     color_discrete_sequence=px.colors.sequential.RdBu)
         st.plotly_chart(fig, use_container_width=True)
 
 # --- ESTOQUE ---
 def page_estoque():
-    st.title("📦 Controle de Materiais")
+    st.markdown("# 📦 Controle de Materiais")
     
     conn = get_connection()
     df = pd.read_sql("SELECT * FROM estoque", conn)
@@ -56,16 +75,11 @@ def page_estoque():
     
     with tab1:
         if not df.empty:
-            st.info("💡 Edite os valores na tabela e salve abaixo.")
             edited_df = st.data_editor(
                 df,
-                column_config={
-                    "id": None, 
-                    "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%f", min_value=0, max_value=500)
-                },
+                column_config={"id": None, "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%d", min_value=0, max_value=500)},
                 use_container_width=True, hide_index=True
             )
-            
             if st.button("💾 Salvar Alterações Rápidas"):
                 conn = get_connection()
                 cursor = conn.cursor()
@@ -74,7 +88,6 @@ def page_estoque():
                                    (row['produto'], row['categoria'], row['quantidade'], row['preco_compra'], row['preco_venda'], row['id']))
                 conn.commit()
                 conn.close()
-                st.success("Estoque atualizado!")
                 st.rerun()
         else:
             st.info("Nenhum material cadastrado.")
@@ -83,21 +96,19 @@ def page_estoque():
         with st.container(border=True):
             st.subheader("🧱 Novo Produto")
             with st.form("form_novo"):
-                nome = st.text_input("Nome do Material (Ex: Gesso, Fita, Parafuso)")
+                nome = st.text_input("Nome do Material")
                 cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"])
                 qtd = st.number_input("Quantidade Inicial", min_value=0, step=1)
                 p_compra = st.number_input("Preço de Compra", min_value=0.0, format="%.2f")
                 p_venda = st.number_input("Preço de Venda", min_value=0.0, format="%.2f")
-                if st.form_submit_button("Salvar no Estoque"):
+                if st.form_submit_button("Salvar"):
                     conn = get_connection()
                     try:
                         conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
                                      (nome, cat, qtd, p_compra, p_venda))
                         conn.commit()
-                        st.success("Produto cadastrado!")
                         st.rerun()
-                    except:
-                        st.error("Erro: Produto já existe.")
+                    except: st.error("Erro: Produto já existe.")
                     conn.close()
 
     with tab3:
@@ -106,16 +117,14 @@ def page_estoque():
             texto_colado = st.text_area("Formato: nome,categoria,quantidade,preco_compra,preco_venda", height=150)
             if st.button("Processar Dados"):
                 if texto_colado:
-                    linhas = texto_colado.strip().split('\n')
                     conn = get_connection()
-                    for linha in linhas:
-                        partes = [p.strip() for p in linha.split(',')]
-                        if len(partes) == 5:
+                    for linha in texto_colado.strip().split('\n'):
+                        p = [x.strip() for x in linha.split(',')]
+                        if len(p) == 5:
                             conn.execute("INSERT OR REPLACE INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
-                                         (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
+                                         (p[0], p[1], float(p[2]), float(p[3]), float(p[4])))
                     conn.commit()
                     conn.close()
-                    st.success("Importado com sucesso!")
                     st.rerun()
 
     with tab4:
@@ -125,33 +134,22 @@ def page_estoque():
                 lista_produtos = df['produto'].tolist()
                 selecionado = st.selectbox("Escolha o produto para editar", lista_produtos)
                 dados_prod = df[df['produto'] == selecionado].iloc[0]
-                
                 with st.form("form_edicao"):
                     n_nome = st.text_input("Nome", value=dados_prod['produto'])
-                    n_cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"], 
-                                         index=["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"].index(dados_prod['categoria']) if dados_prod['categoria'] in ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"] else 0)
                     n_qtd = st.number_input("Quantidade", value=int(dados_prod['quantidade']), step=1)
-                    n_pcompra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']), format="%.2f")
-                    n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']), format="%.2f")
-                    
-                    if st.form_submit_button("Atualizar Produto"):
+                    if st.form_submit_button("Atualizar"):
                         conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
-                                       (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, int(dados_prod['id'])))
+                        conn.execute("UPDATE estoque SET produto=?, quantidade=? WHERE id=?", (n_nome, n_qtd, int(dados_prod['id'])))
                         conn.commit()
                         conn.close()
-                        st.success("Atualizado!")
                         st.rerun()
-            else:
-                st.warning("Cadastre produtos.")
 
-# --- VENDAS E COMPRAS ---
+# --- VENDAS E COMPRAS (VALIDADO) ---
 def page_transacoes():
-    st.title("🛒 Movimentações")
+    st.markdown("# 🛒 Movimentações")
     conn = get_connection()
-    df_produtos = pd.read_sql("SELECT produto FROM estoque", conn)
-    produtos = df_produtos['produto'].tolist()
+    df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
+    produtos = df_estoque['produto'].tolist()
     
     if not produtos:
         st.warning("Cadastre algum produto no Estoque primeiro!")
@@ -160,31 +158,36 @@ def page_transacoes():
             col1, col2 = st.columns(2)
             with col1:
                 tipo = st.selectbox("Tipo de Operação", ["Venda", "Compra"])
-                prod_selecionado = st.selectbox("Material (🧱 Gesso, 📏 Fita, ✂️ Tesoura...)", produtos)
+                prod_selecionado = st.selectbox("Material", produtos)
             with col2:
                 qtd = st.number_input("Quantidade", min_value=1, step=1, format="%d")
                 preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
             
-            total_calculado = qtd * preco_unitario
-            st.metric("Valor Total da Operação", f"R$ {total_calculado:,.2f}")
+            # Validação de Estoque
+            estoque_atual = df_estoque[df_estoque['produto'] == prod_selecionado]['quantidade'].iloc[0]
             
-            if st.button("✅ Confirmar Operação"):
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
-                               (prod_selecionado, tipo, qtd, total_calculado))
-                if tipo == "Venda":
-                    cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
-                else:
-                    cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
-                conn.commit()
-                conn.close()
-                st.success(f"Estoque e Saldo atualizados!")
-                st.rerun()
+            if tipo == "Venda" and qtd > estoque_atual:
+                st.error(f"❌ Estoque Insuficiente! Disponível: {estoque_atual} unidades.")
+            else:
+                total_calculado = qtd * preco_unitario
+                st.metric("Valor Total", f"R$ {total_calculado:,.2f}")
+                
+                if st.button("✅ Confirmar Operação"):
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
+                                   (prod_selecionado, tipo, qtd, total_calculado))
+                    if tipo == "Venda":
+                        cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
+                    else:
+                        cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
+                    conn.commit()
+                    conn.close()
+                    st.success("Operação concluída!")
+                    st.rerun()
     conn.close()
 
 # --- NAVEGAÇÃO ---
-st.sidebar.title("ItaGesso Menu")
+st.sidebar.title("ItaGesso | Menu")
 menu = st.sidebar.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras"])
 if menu == "Dashboard": show_dashboard()
 elif menu == "Estoque": page_estoque()
