@@ -35,13 +35,15 @@ def show_dashboard():
     conn.close()
     
     if not df_mov.empty:
-        # Preparação de datas para filtro
+        # Preparação de datas
         df_mov['data'] = pd.to_datetime(df_mov['data'])
         df_mov['mes_ano'] = df_mov['data'].dt.strftime('%Y-%m')
         
-        # Filtro de Mês
+        # Filtro de Mês (Default é o mês atual)
+        mes_atual = datetime.now().strftime('%Y-%m')
         meses_disponiveis = sorted(df_mov['mes_ano'].unique(), reverse=True)
-        mes_selecionado = st.selectbox("📅 Selecione o mês para análise:", meses_disponiveis)
+        
+        mes_selecionado = st.selectbox("📅 Selecione o mês para análise:", meses_disponiveis, index=0)
         
         df_filtrado = df_mov[df_mov['mes_ano'] == mes_selecionado]
         
@@ -54,12 +56,15 @@ def show_dashboard():
         c2.metric("💸 Despesas no Mês", f"R$ {total_compras:,.2f}")
         c3.metric("📈 Saldo Mensal", f"R$ {saldo:,.2f}")
     else:
-        st.info("Nenhuma movimentação registrada até o momento.")
+        st.info("Nenhuma movimentação registrada.")
 
+    # --- GRÁFICO CORRIGIDO (Referência: 432643.jpg) ---
     if not df_estoque.empty:
-        st.markdown("### 📊 Composição Atual do Estoque")
-        fig = px.pie(df_estoque, values='quantidade', names='categoria', 
-                     title="Distribuição por Categoria",
+        st.markdown("### 📊 Distribuição por Categoria")
+        # Agrupamento necessário para o gráfico não quebrar
+        df_chart = df_estoque.groupby('categoria')['quantidade'].sum().reset_index()
+        
+        fig = px.pie(df_chart, values='quantidade', names='categoria', 
                      color_discrete_sequence=px.colors.sequential.RdBu)
         st.plotly_chart(fig, use_container_width=True)
 
@@ -143,8 +148,10 @@ def page_estoque():
                         conn.commit()
                         conn.close()
                         st.rerun()
+            else:
+                st.warning("Cadastre produtos.")
 
-# --- VENDAS E COMPRAS (VALIDADO) ---
+# --- VENDAS E COMPRAS ---
 def page_transacoes():
     st.markdown("# 🛒 Movimentações")
     conn = get_connection()
@@ -163,7 +170,7 @@ def page_transacoes():
                 qtd = st.number_input("Quantidade", min_value=1, step=1, format="%d")
                 preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
             
-            # Validação de Estoque
+            # Validação
             estoque_atual = df_estoque[df_estoque['produto'] == prod_selecionado]['quantidade'].iloc[0]
             
             if tipo == "Venda" and qtd > estoque_atual:
