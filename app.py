@@ -52,19 +52,18 @@ def page_estoque():
     df = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Colar Dados", "✏️ Editar Produto"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Estoque Atual", "➕ Cadastro", "📥 Importação", "✏️ Edição"])
     
     with tab1:
         if not df.empty:
-            st.info("💡 Edite e clique em 'Salvar Alterações Rápidas'.")
+            st.info("💡 Edite os valores na tabela e salve abaixo.")
             edited_df = st.data_editor(
                 df,
                 column_config={
                     "id": None, 
                     "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%f", min_value=0, max_value=500)
                 },
-                use_container_width=True, 
-                hide_index=True
+                use_container_width=True, hide_index=True
             )
             
             if st.button("💾 Salvar Alterações Rápidas"):
@@ -81,77 +80,75 @@ def page_estoque():
             st.info("Nenhum material cadastrado.")
 
     with tab2:
-        with st.form("form_novo"):
-            nome = st.text_input("Nome do Material")
-            cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"])
-            qtd = st.number_input("Quantidade Inicial", min_value=0.0)
-            p_compra = st.number_input("Preço de Compra", min_value=0.0)
-            p_venda = st.number_input("Preço de Venda", min_value=0.0)
-            if st.form_submit_button("Salvar no Estoque"):
-                conn = get_connection()
-                try:
-                    conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
-                                 (nome, cat, qtd, p_compra, p_venda))
-                    conn.commit()
-                    conn.close()
-                    st.success("Produto cadastrado!")
-                    st.rerun()
-                except:
-                    st.error("Erro: Produto já existe.")
+        with st.container(border=True):
+            st.subheader("🧱 Novo Produto")
+            with st.form("form_novo"):
+                nome = st.text_input("Nome do Material (Ex: Gesso, Fita, Parafuso)")
+                cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"])
+                qtd = st.number_input("Quantidade Inicial", min_value=0, step=1)
+                p_compra = st.number_input("Preço de Compra", min_value=0.0, format="%.2f")
+                p_venda = st.number_input("Preço de Venda", min_value=0.0, format="%.2f")
+                if st.form_submit_button("Salvar no Estoque"):
+                    conn = get_connection()
+                    try:
+                        conn.execute("INSERT INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
+                                     (nome, cat, qtd, p_compra, p_venda))
+                        conn.commit()
+                        st.success("Produto cadastrado!")
+                        st.rerun()
+                    except:
+                        st.error("Erro: Produto já existe.")
                     conn.close()
 
     with tab3:
-        st.subheader("Colar Dados (Bulk Import)")
-        texto_colado = st.text_area("Cole aqui (formato: nome,categoria,quantidade,preco_compra,preco_venda)", height=200)
-        if st.button("Processar e Salvar"):
-            if texto_colado:
-                linhas = texto_colado.strip().split('\n')
-                conn = get_connection()
-                for linha in linhas:
-                    partes = [p.strip() for p in linha.split(',')]
-                    if len(partes) == 5:
-                        conn.execute("INSERT OR REPLACE INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
-                                     (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
-                conn.commit()
-                conn.close()
-                st.success("Importado com sucesso!")
-                st.rerun()
+        with st.container(border=True):
+            st.subheader("📥 Importação em Lote")
+            texto_colado = st.text_area("Formato: nome,categoria,quantidade,preco_compra,preco_venda", height=150)
+            if st.button("Processar Dados"):
+                if texto_colado:
+                    linhas = texto_colado.strip().split('\n')
+                    conn = get_connection()
+                    for linha in linhas:
+                        partes = [p.strip() for p in linha.split(',')]
+                        if len(partes) == 5:
+                            conn.execute("INSERT OR REPLACE INTO estoque (produto, categoria, quantidade, preco_compra, preco_venda) VALUES (?,?,?,?,?)", 
+                                         (partes[0], partes[1], float(partes[2]), float(partes[3]), float(partes[4])))
+                    conn.commit()
+                    conn.close()
+                    st.success("Importado com sucesso!")
+                    st.rerun()
 
     with tab4:
-        st.subheader("✏️ Editar Produto Selecionado")
-        if not df.empty:
-            lista_produtos = df['produto'].tolist()
-            selecionado = st.selectbox("Selecione o produto que deseja editar", lista_produtos)
-            dados_prod = df[df['produto'] == selecionado].iloc[0]
-            
-            with st.form("form_edicao"):
-                n_nome = st.text_input("Novo Nome", value=dados_prod['produto'])
-                categorias = ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"]
-                idx_cat = categorias.index(dados_prod['categoria']) if dados_prod['categoria'] in categorias else 0
-                n_cat = st.selectbox("Categoria", categorias, index=idx_cat)
-                n_qtd = st.number_input("Quantidade", value=float(dados_prod['quantidade']), step=0.1)
-                n_pcompra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']), step=0.01)
-                n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']), step=0.01)
+        with st.container(border=True):
+            st.subheader("✏️ Edição Detalhada")
+            if not df.empty:
+                lista_produtos = df['produto'].tolist()
+                selecionado = st.selectbox("Escolha o produto para editar", lista_produtos)
+                dados_prod = df[df['produto'] == selecionado].iloc[0]
                 
-                if st.form_submit_button("Atualizar Produto"):
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    try:
+                with st.form("form_edicao"):
+                    n_nome = st.text_input("Nome", value=dados_prod['produto'])
+                    n_cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"], 
+                                         index=["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"].index(dados_prod['categoria']) if dados_prod['categoria'] in ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"] else 0)
+                    n_qtd = st.number_input("Quantidade", value=int(dados_prod['quantidade']), step=1)
+                    n_pcompra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']), format="%.2f")
+                    n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']), format="%.2f")
+                    
+                    if st.form_submit_button("Atualizar Produto"):
+                        conn = get_connection()
+                        cursor = conn.cursor()
                         cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
                                        (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, int(dados_prod['id'])))
                         conn.commit()
-                        st.success("Produto atualizado com sucesso!")
-                        st.rerun()
-                    except sqlite3.IntegrityError:
-                        st.error("Erro: Já existe um produto com este nome!")
-                    finally:
                         conn.close()
-        else:
-            st.warning("Cadastre produtos para poder editar.")
+                        st.success("Atualizado!")
+                        st.rerun()
+            else:
+                st.warning("Cadastre produtos.")
 
-# --- VENDAS E COMPRAS (CORRIGIDO) ---
+# --- VENDAS E COMPRAS ---
 def page_transacoes():
-    st.title("💸 Vendas e Compras")
+    st.title("🛒 Movimentações")
     conn = get_connection()
     df_produtos = pd.read_sql("SELECT produto FROM estoque", conn)
     produtos = df_produtos['produto'].tolist()
@@ -159,27 +156,31 @@ def page_transacoes():
     if not produtos:
         st.warning("Cadastre algum produto no Estoque primeiro!")
     else:
-        tipo = st.selectbox("Tipo", ["Venda", "Compra"])
-        prod_selecionado = st.selectbox("Selecione o Produto", produtos)
-        qtd = st.number_input("Quantidade", min_value=0.1, step=1.0)
-        preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, step=0.1)
-        
-        # O SISTEMA AGORA CALCULA O TOTAL
-        total_calculado = qtd * preco_unitario
-        st.write(f"### Valor Total da Operação: R$ {total_calculado:,.2f}")
-        
-        if st.button("Confirmar Movimentação"):
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
-                           (prod_selecionado, tipo, qtd, total_calculado))
-            if tipo == "Venda":
-                cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
-            else:
-                cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
-            conn.commit()
-            conn.close()
-            st.success(f"Estoque e Saldo atualizados com sucesso!")
-            st.rerun()
+        with st.container(border=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                tipo = st.selectbox("Tipo de Operação", ["Venda", "Compra"])
+                prod_selecionado = st.selectbox("Material (🧱 Gesso, 📏 Fita, ✂️ Tesoura...)", produtos)
+            with col2:
+                qtd = st.number_input("Quantidade", min_value=1, step=1, format="%d")
+                preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
+            
+            total_calculado = qtd * preco_unitario
+            st.metric("Valor Total da Operação", f"R$ {total_calculado:,.2f}")
+            
+            if st.button("✅ Confirmar Operação"):
+                conn = get_connection()
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
+                               (prod_selecionado, tipo, qtd, total_calculado))
+                if tipo == "Venda":
+                    cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
+                else:
+                    cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
+                conn.commit()
+                conn.close()
+                st.success(f"Estoque e Saldo atualizados!")
+                st.rerun()
     conn.close()
 
 # --- NAVEGAÇÃO ---
