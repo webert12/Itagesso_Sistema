@@ -23,7 +23,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
 conn.commit()
 conn.close()
 
-# --- LÓGICA DO DASHBOARD ---
+# --- DASHBOARD ---
 def show_dashboard():
     st.title("📊 Painel ItaGesso")
     conn = get_connection()
@@ -31,7 +31,7 @@ def show_dashboard():
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
     
-    # Métricas
+    # Cálculos
     total_vendas = df_mov[df_mov['tipo'] == 'Venda']['valor_total'].sum()
     total_compras = df_mov[df_mov['tipo'] == 'Compra']['valor_total'].sum()
     
@@ -41,13 +41,15 @@ def show_dashboard():
     c3.metric("Saldo Estimado", f"R$ {total_vendas - total_compras:,.2f}")
     
     if not df_estoque.empty:
-        fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
+        st.subheader("Distribuição do Estoque")
+        fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque por Categoria")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- PÁGINA ESTOQUE (COM ABAS) ---
+# --- ESTOQUE (COM ABAS) ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
-    tab1, tab2 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo Produto"])
+    
+    tab1, tab2, tab3 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Importar/Exportar"])
     
     with tab1:
         conn = get_connection()
@@ -60,7 +62,7 @@ def page_estoque():
 
     with tab2:
         with st.form("form_novo"):
-            nome = st.text_input("Nome do Material (Ex: Gesso Cola)")
+            nome = st.text_input("Nome do Material")
             cat = st.selectbox("Categoria", ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"])
             qtd = st.number_input("Quantidade Inicial", min_value=0.0)
             p_compra = st.number_input("Preço de Compra", min_value=0.0)
@@ -74,14 +76,36 @@ def page_estoque():
                     st.success("Produto cadastrado!")
                     st.rerun()
                 except:
-                    st.error("Erro: Este produto já existe no estoque.")
+                    st.error("Erro: Este produto já existe.")
                 conn.close()
 
-# --- PÁGINA VENDAS/COMPRAS ---
+    with tab3:
+        st.subheader("Importar CSV")
+        uploaded_file = st.file_uploader("Escolha um arquivo CSV", type="csv")
+        if uploaded_file is not None:
+            df_import = pd.read_csv(uploaded_file)
+            if st.button("Confirmar Importação"):
+                conn = get_connection()
+                df_import.to_sql('estoque', conn, if_exists='append', index=False)
+                conn.close()
+                st.success("Produtos importados!")
+                st.rerun()
+        
+        st.markdown("---")
+        st.subheader("Exportar Estoque")
+        conn = get_connection()
+        df_export = pd.read_sql("SELECT * FROM estoque", conn)
+        conn.close()
+        if not df_export.empty:
+            csv = df_export.to_csv(index=False).encode('utf-8')
+            st.download_button("Baixar Estoque (.csv)", data=csv, file_name="estoque_itagesso.csv", mime="text/csv")
+
+# --- VENDAS E COMPRAS ---
 def page_transacoes():
     st.title("💸 Vendas e Compras")
     conn = get_connection()
-    produtos = pd.read_sql("SELECT produto FROM estoque", conn)['produto'].tolist()
+    df_produtos = pd.read_sql("SELECT produto FROM estoque", conn)
+    produtos = df_produtos['produto'].tolist()
     
     if not produtos:
         st.warning("Cadastre algum produto no Estoque primeiro!")
@@ -93,21 +117,21 @@ def page_transacoes():
         
         if st.button("Confirmar Movimentação"):
             cursor = conn.cursor()
-            # Registra movimento
             cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", 
                            (prod_selecionado, tipo, qtd, valor))
-            # Atualiza estoque
+            
             if tipo == "Venda":
                 cursor.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE produto = ?", (qtd, prod_selecionado))
             else:
                 cursor.execute("UPDATE estoque SET quantidade = quantidade + ? WHERE produto = ?", (qtd, prod_selecionado))
             
             conn.commit()
-            st.success(f"Estoque atualizado para {prod_selecionado}!")
+            st.success(f"Estoque atualizado!")
             st.rerun()
     conn.close()
 
-# --- MENU LATERAL ---
+# --- NAVEGAÇÃO ---
+st.sidebar.title("ItaGesso Menu")
 menu = st.sidebar.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras"])
 if menu == "Dashboard": show_dashboard()
 elif menu == "Estoque": page_estoque()
