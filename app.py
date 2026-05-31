@@ -60,8 +60,12 @@ def page_estoque():
             st.info("💡 Edite e clique em 'Salvar Alterações Rápidas'.")
             edited_df = st.data_editor(
                 df,
-                column_config={"id": None, "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%f", min_value=0, max_value=500)},
-                use_container_width=True, hide_index=True
+                column_config={
+                    "id": None, 
+                    "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%f", min_value=0, max_value=500)
+                },
+                use_container_width=True, 
+                hide_index=True
             )
             
             if st.button("💾 Salvar Alterações Rápidas"):
@@ -126,19 +130,23 @@ def page_estoque():
                 categorias = ["Gesso", "Drywall", "Estrutura", "Parafusos", "Acabamento"]
                 idx_cat = categorias.index(dados_prod['categoria']) if dados_prod['categoria'] in categorias else 0
                 n_cat = st.selectbox("Categoria", categorias, index=idx_cat)
-                n_qtd = st.number_input("Quantidade", value=float(dados_prod['quantidade']))
-                n_pcompra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']))
-                n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']))
+                n_qtd = st.number_input("Quantidade", value=float(dados_prod['quantidade']), step=0.1)
+                n_pcompra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']), step=0.01)
+                n_pvenda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']), step=0.01)
                 
                 if st.form_submit_button("Atualizar Produto"):
                     conn = get_connection()
                     cursor = conn.cursor()
-                    cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
-                                   (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, dados_prod['id']))
-                    conn.commit()
-                    conn.close()
-                    st.success("Produto atualizado com sucesso!")
-                    st.rerun()
+                    try:
+                        cursor.execute('''UPDATE estoque SET produto=?, categoria=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?''', 
+                                       (n_nome, n_cat, n_qtd, n_pcompra, n_pvenda, int(dados_prod['id'])))
+                        conn.commit()
+                        st.success("Produto atualizado com sucesso!")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Erro: Já existe um produto com este nome!")
+                    finally:
+                        conn.close()
         else:
             st.warning("Cadastre produtos para poder editar.")
 
