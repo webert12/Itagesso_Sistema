@@ -24,7 +24,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
 conn.commit()
 conn.close()
 
-# --- DASHBOARD PROFISSIONAL ---
+# --- DASHBOARD MENSAL (ATUALIZADO) ---
 def show_dashboard():
     st.markdown("# 🏛️ ItaGesso | Painel de Controle")
     st.markdown("---")
@@ -34,7 +34,6 @@ def show_dashboard():
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
     
-    # --- CONTROLE MENSAL ---
     if not df_mov.empty:
         df_mov['data'] = pd.to_datetime(df_mov['data'])
         df_mov['mes_ano'] = df_mov['data'].dt.strftime('%Y-%m')
@@ -42,7 +41,6 @@ def show_dashboard():
         meses_disponiveis = sorted(df_mov['mes_ano'].unique(), reverse=True)
         mes_selecionado = st.selectbox("📅 Selecione o mês para análise:", meses_disponiveis, index=0)
         
-        # Filtra histórico pelo mês
         df_filtrado = df_mov[df_mov['mes_ano'] == mes_selecionado]
         
         total_vendas = df_filtrado[df_filtrado['tipo'] == 'Venda']['valor_total'].sum()
@@ -53,23 +51,21 @@ def show_dashboard():
         c2.metric("💸 Despesas", f"R$ {total_compras:,.2f}")
         c3.metric("📈 Saldo", f"R$ {total_vendas - total_compras:,.2f}")
         
-        st.markdown("### 📜 Histórico de Movimentações do Mês")
-        st.dataframe(df_filtrado[['data', 'produto', 'tipo', 'quantidade', 'valor_total']], use_container_width=True)
+        # --- HISTÓRICO OCULTO (Expander) ---
+        with st.expander("📂 Ver Histórico Detalhado do Mês Selecionado"):
+            st.dataframe(df_filtrado[['data', 'produto', 'tipo', 'quantidade', 'valor_total']], use_container_width=True)
     else:
         st.info("Nenhuma movimentação registrada.")
 
     # --- GRÁFICO DE ESTOQUE CORRIGIDO ---
     if not df_estoque.empty:
         st.markdown("### 📊 Distribuição do Estoque Atual")
-        
-        # FILTRO DE SEGURANÇA: Remove itens sem estoque ou negativos
         df_chart = df_estoque[df_estoque['quantidade'] > 0].copy()
         
         if not df_chart.empty:
             df_chart = df_chart.groupby('categoria')['quantidade'].sum().reset_index()
-            
             fig = px.pie(df_chart, values='quantidade', names='categoria', 
-                         title="Quantidade de itens por Categoria",
+                         title="Itens em Estoque por Categoria",
                          hole=0.3)
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -177,6 +173,7 @@ def page_transacoes():
                 qtd = st.number_input("Quantidade", min_value=1, step=1, format="%d")
                 preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
             
+            # Validação
             estoque_atual = df_estoque[df_estoque['produto'] == prod_selecionado]['quantidade'].iloc[0]
             
             if tipo == "Venda" and qtd > estoque_atual:
