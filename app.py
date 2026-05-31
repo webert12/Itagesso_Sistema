@@ -7,12 +7,14 @@ from datetime import datetime
 # --- CONFIGURAÇÃO E CSS DE LIMPEZA ---
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
 
+# CSS para esconder elementos indesejados (Menu superior, rodapé, etc)
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            section[data-testid="stSidebar"] {padding-top: 0px;}
+            /* Remove a barra lateral padrão para usar o menu superior */
+            [data-testid="stSidebar"] {display: none;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -34,10 +36,14 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
 conn.commit()
 conn.close()
 
+# --- MENU SUPERIOR ---
+# Colocamos o menu acima de tudo.
+menu = st.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras"], horizontal=True, label_visibility="collapsed")
+st.markdown("---")
+
 # --- DASHBOARD MENSAL ---
 def show_dashboard():
     st.markdown("# 🏛️ ItaGesso | Painel de Controle")
-    st.markdown("---")
     
     conn = get_connection()
     df_mov = pd.read_sql("SELECT * FROM movimentacoes", conn)
@@ -51,7 +57,6 @@ def show_dashboard():
         mes_selecionado = st.selectbox("📅 Selecione o mês para análise:", meses_disponiveis, index=0)
         
         df_filtrado = df_mov[df_mov['mes_ano'] == mes_selecionado]
-        
         total_vendas = df_filtrado[df_filtrado['tipo'] == 'Venda']['valor_total'].sum()
         total_compras = df_filtrado[df_filtrado['tipo'] == 'Compra']['valor_total'].sum()
         
@@ -181,11 +186,7 @@ def page_transacoes():
                     st.rerun()
     conn.close()
 
-# --- NAVEGAÇÃO ---
-with st.sidebar:
-    st.title("ItaGesso | Menu")
-    menu = st.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras"])
-
+# --- LÓGICA DE NAVEGAÇÃO ---
 if menu == "Dashboard": show_dashboard()
 elif menu == "Estoque": page_estoque()
 elif menu == "Vendas/Compras": page_transacoes()
