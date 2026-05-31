@@ -78,13 +78,15 @@ def show_dashboard():
             fig = px.pie(df_chart, values='quantidade', names='categoria', hole=0.3)
             st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE E TRANSAÇÕES (MANTIDAS IGUAIS) ---
+# --- ESTOQUE E TRANSAÇÕES ---
 def page_estoque():
     st.markdown("# 📦 Controle de Materiais")
     conn = get_connection()
     df = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
+    
     tab1, tab2, tab3, tab4 = st.tabs(["📋 Estoque Atual", "➕ Cadastro", "📥 Importação", "✏️ Edição"])
+    
     with tab1:
         if not df.empty:
             edited_df = st.data_editor(df, column_config={"id": None, "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%d", min_value=0, max_value=500)}, use_container_width=True, hide_index=True)
@@ -96,6 +98,7 @@ def page_estoque():
                 conn.commit()
                 conn.close()
                 st.rerun()
+
     with tab2:
         with st.container(border=True):
             st.subheader("🧱 Novo Produto")
@@ -113,6 +116,7 @@ def page_estoque():
                         st.rerun()
                     except: st.error("Erro: Produto já existe.")
                     conn.close()
+
     with tab3:
         with st.container(border=True):
             st.subheader("📥 Importação em Lote")
@@ -126,6 +130,7 @@ def page_estoque():
                     conn.commit()
                     conn.close()
                     st.rerun()
+
     with tab4:
         with st.container(border=True):
             st.subheader("✏️ Edição Detalhada")
@@ -136,12 +141,19 @@ def page_estoque():
                 with st.form("form_edicao"):
                     n_nome = st.text_input("Nome", value=dados_prod['produto'])
                     n_qtd = st.number_input("Quantidade", value=int(dados_prod['quantidade']), step=1)
+                    n_p_compra = st.number_input("Preço de Compra", value=float(dados_prod['preco_compra']), format="%.2f")
+                    n_p_venda = st.number_input("Preço de Venda", value=float(dados_prod['preco_venda']), format="%.2f")
+                    
                     if st.form_submit_button("Atualizar"):
                         conn = get_connection()
-                        conn.execute("UPDATE estoque SET produto=?, quantidade=? WHERE id=?", (n_nome, n_qtd, int(dados_prod['id'])))
+                        conn.execute("UPDATE estoque SET produto=?, quantidade=?, preco_compra=?, preco_venda=? WHERE id=?", 
+                                     (n_nome, n_qtd, n_p_compra, n_p_venda, int(dados_prod['id'])))
                         conn.commit()
                         conn.close()
+                        st.success("Atualizado com sucesso!")
                         st.rerun()
+            else:
+                st.warning("Cadastre produtos.")
 
 def page_transacoes():
     st.markdown("# 🛒 Movimentações")
@@ -180,15 +192,15 @@ def page_transacoes():
 def page_configuracoes():
     st.markdown("# ⚙️ Configurações do Sistema")
     st.markdown("---")
-    
     st.subheader("🚨 Área de Risco")
     st.warning("Ao clicar no botão abaixo, todo o histórico de vendas, compras e estoque será apagado permanentemente.")
-    
     if st.button("🔴 Apagar Todos os Dados e Reiniciar Sistema"):
         conn = get_connection()
-        conn.execute("DROP TABLE estoque")
-        conn.execute("DROP TABLE movimentacoes")
-        conn.commit()
+        try:
+            conn.execute("DROP TABLE estoque")
+            conn.execute("DROP TABLE movimentacoes")
+            conn.commit()
+        except: pass
         conn.close()
         st.success("Sistema resetado com sucesso! Recarregando...")
         st.rerun()
