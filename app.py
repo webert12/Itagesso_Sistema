@@ -3,17 +3,16 @@ import sqlite3
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import os
 
 # --- CONFIGURAÇÃO E CSS DE LIMPEZA ---
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
 
-# CSS para esconder elementos indesejados (Menu superior, rodapé, etc)
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            /* Remove a barra lateral padrão para usar o menu superior */
             [data-testid="stSidebar"] {display: none;}
             </style>
             """
@@ -23,28 +22,29 @@ def get_connection():
     return sqlite3.connect('itagesso.db', check_same_thread=False)
 
 # --- INICIALIZAÇÃO DO BANCO ---
-conn = get_connection()
-cursor = conn.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS estoque 
-                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                   produto TEXT UNIQUE, categoria TEXT, quantidade REAL, 
-                   preco_compra REAL, preco_venda REAL)''')
-cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
-                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                   produto TEXT, tipo TEXT, quantidade REAL, 
-                   valor_total REAL, data DATE)''')
-conn.commit()
-conn.close()
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS estoque 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       produto TEXT UNIQUE, categoria TEXT, quantidade REAL, 
+                       preco_compra REAL, preco_venda REAL)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS movimentacoes
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       produto TEXT, tipo TEXT, quantidade REAL, 
+                       valor_total REAL, data DATE)''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # --- MENU SUPERIOR ---
-# Colocamos o menu acima de tudo.
-menu = st.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras"], horizontal=True, label_visibility="collapsed")
+menu = st.radio("Navegação", ["Dashboard", "Estoque", "Vendas/Compras", "Configurações"], horizontal=True, label_visibility="collapsed")
 st.markdown("---")
 
-# --- DASHBOARD MENSAL ---
+# --- DASHBOARD ---
 def show_dashboard():
     st.markdown("# 🏛️ ItaGesso | Painel de Controle")
-    
     conn = get_connection()
     df_mov = pd.read_sql("SELECT * FROM movimentacoes", conn)
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
@@ -78,19 +78,17 @@ def show_dashboard():
             fig = px.pie(df_chart, values='quantidade', names='categoria', hole=0.3)
             st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE ---
+# --- ESTOQUE E TRANSAÇÕES (MANTIDAS IGUAIS) ---
 def page_estoque():
     st.markdown("# 📦 Controle de Materiais")
     conn = get_connection()
     df = pd.read_sql("SELECT * FROM estoque", conn)
     conn.close()
-    
     tab1, tab2, tab3, tab4 = st.tabs(["📋 Estoque Atual", "➕ Cadastro", "📥 Importação", "✏️ Edição"])
-    
     with tab1:
         if not df.empty:
             edited_df = st.data_editor(df, column_config={"id": None, "quantidade": st.column_config.ProgressColumn("Estoque Atual", format="%d", min_value=0, max_value=500)}, use_container_width=True, hide_index=True)
-            if st.button("💾 Salvar Alterações Rápidas"):
+            if st.button("💾 Salvar Alterações"):
                 conn = get_connection()
                 cursor = conn.cursor()
                 for _, row in edited_df.iterrows():
@@ -98,7 +96,6 @@ def page_estoque():
                 conn.commit()
                 conn.close()
                 st.rerun()
-
     with tab2:
         with st.container(border=True):
             st.subheader("🧱 Novo Produto")
@@ -116,7 +113,6 @@ def page_estoque():
                         st.rerun()
                     except: st.error("Erro: Produto já existe.")
                     conn.close()
-
     with tab3:
         with st.container(border=True):
             st.subheader("📥 Importação em Lote")
@@ -130,7 +126,6 @@ def page_estoque():
                     conn.commit()
                     conn.close()
                     st.rerun()
-
     with tab4:
         with st.container(border=True):
             st.subheader("✏️ Edição Detalhada")
@@ -148,13 +143,11 @@ def page_estoque():
                         conn.close()
                         st.rerun()
 
-# --- TRANSAÇÕES ---
 def page_transacoes():
     st.markdown("# 🛒 Movimentações")
     conn = get_connection()
     df_estoque = pd.read_sql("SELECT * FROM estoque", conn)
     produtos = df_estoque['produto'].tolist()
-    
     if not produtos:
         st.warning("Cadastre algum produto no Estoque primeiro!")
     else:
@@ -166,15 +159,12 @@ def page_transacoes():
             with col2:
                 qtd = st.number_input("Quantidade", min_value=1, step=1, format="%d")
                 preco_unitario = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
-            
             estoque_atual = df_estoque[df_estoque['produto'] == prod_selecionado]['quantidade'].iloc[0]
-            
             if tipo == "Venda" and qtd > estoque_atual:
                 st.error(f"❌ Estoque Insuficiente! Disponível: {estoque_atual} unidades.")
             else:
                 total_calculado = qtd * preco_unitario
                 st.metric("Valor Total", f"R$ {total_calculado:,.2f}")
-                
                 if st.button("✅ Confirmar Operação"):
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (?,?,?,?, date('now'))", (prod_selecionado, tipo, qtd, total_calculado))
@@ -186,7 +176,25 @@ def page_transacoes():
                     st.rerun()
     conn.close()
 
+# --- CONFIGURAÇÕES E RESET ---
+def page_configuracoes():
+    st.markdown("# ⚙️ Configurações do Sistema")
+    st.markdown("---")
+    
+    st.subheader("🚨 Área de Risco")
+    st.warning("Ao clicar no botão abaixo, todo o histórico de vendas, compras e estoque será apagado permanentemente.")
+    
+    if st.button("🔴 Apagar Todos os Dados e Reiniciar Sistema"):
+        conn = get_connection()
+        conn.execute("DROP TABLE estoque")
+        conn.execute("DROP TABLE movimentacoes")
+        conn.commit()
+        conn.close()
+        st.success("Sistema resetado com sucesso! Recarregando...")
+        st.rerun()
+
 # --- LÓGICA DE NAVEGAÇÃO ---
 if menu == "Dashboard": show_dashboard()
 elif menu == "Estoque": page_estoque()
 elif menu == "Vendas/Compras": page_transacoes()
+elif menu == "Configurações": page_configuracoes()
