@@ -44,7 +44,7 @@ def show_dashboard():
         fig = px.pie(df_estoque, values='quantidade', names='categoria', title="Composição do Estoque")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- ESTOQUE (COM EDIÇÃO E BARRA DE STATUS) ---
+# --- ESTOQUE (CORRIGIDO PARA EDIÇÃO) ---
 def page_estoque():
     st.title("📦 Controle de Materiais")
     tab1, tab2, tab3 = st.tabs(["📋 Estoque Atual", "➕ Cadastrar Novo", "📥 Colar Dados"])
@@ -54,30 +54,26 @@ def page_estoque():
         df = pd.read_sql("SELECT * FROM estoque", conn)
         
         if not df.empty:
-            st.info("💡 Dica: Clique na tabela para editar quantidades e preços. Clique em 'Salvar Alterações' abaixo.")
+            st.info("💡 Edite os valores diretamente na tabela abaixo e clique em 'Salvar Alterações'.")
             
-            # Editor de Dados com Barra de Progresso
+            # Editor de Dados aprimorado
             edited_df = st.data_editor(
                 df,
                 column_config={
-                    "quantidade": st.column_config.ProgressColumn(
-                        "Estoque Atual",
-                        help="Nível do estoque (max 500 para visualização)",
-                        format="%f",
-                        min_value=0,
-                        max_value=500, # Define o que é 'cheio' para o gráfico
-                    ),
                     "id": None, # Esconde o ID
-                    "produto": st.column_config.TextColumn("Produto", disabled=True), # Nome bloqueado para segurança
+                    "produto": st.column_config.TextColumn("Produto", disabled=True),
+                    "categoria": st.column_config.TextColumn("Categoria", disabled=True),
+                    "quantidade": st.column_config.NumberColumn("Quantidade", min_value=0),
+                    "preco_compra": st.column_config.NumberColumn("Preço Compra (R$)", format="%.2f"),
+                    "preco_venda": st.column_config.NumberColumn("Preço Venda (R$)", format="%.2f"),
                 },
                 use_container_width=True,
                 hide_index=True
             )
             
             if st.button("💾 Salvar Alterações no Estoque"):
-                # Atualiza o banco com os dados editados
+                cursor = conn.cursor()
                 for index, row in edited_df.iterrows():
-                    cursor = conn.cursor()
                     cursor.execute('''UPDATE estoque SET quantidade=?, preco_compra=?, preco_venda=? 
                                       WHERE produto=?''', 
                                    (row['quantidade'], row['preco_compra'], row['preco_venda'], row['produto']))
