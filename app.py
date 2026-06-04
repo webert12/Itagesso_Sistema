@@ -23,7 +23,7 @@ try:
         conn.execute(text("SELECT 1"))
 except Exception as e:
     st.error(f"Erro crítico ao conectar ao banco: {e}")
-    st.info("Se este erro aparecer, verifique apenas se a sua senha na linha 11 está correta.")
+    st.info("Se este erro aparecer, verifique se a sua senha definida no painel do Supabase coincide com 'Itagesso2026'.")
     st.stop()
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
@@ -114,7 +114,7 @@ def page_estoque():
                     conn.execute(text('UPDATE estoque SET produto=:p, categoria=:c, quantidade=:q, preco_compra=:pc, preco_venda=:pv WHERE id=:id'), 
                                  {"p": row['produto'], "c": row['categoria'], "q": row['quantidade'], "pc": row['preco_compra'], "pv": row['preco_venda'], "id": row['id']})
                 conn.commit()
-            st.success("Estoque atualizado com sucesso!")
+            st.success("Estoque updated com sucesso!")
             st.rerun()
             
     with tab2:
