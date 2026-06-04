@@ -2,28 +2,28 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-import os
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
-# --- CONFIGURAÇÃO E DIAGNÓSTICO ---
-# Bloco de diagnóstico para identificar falhas de conexão imediatamente
+# --- CONFIGURAÇÃO ROBUSTA ---
 try:
-    if "DATABASE_URL" not in st.secrets:
-        st.error("Erro: A chave 'DATABASE_URL' não foi encontrada nas Secrets do Streamlit.")
-        st.stop()
-        
     DATABASE_URL = st.secrets["DATABASE_URL"]
     
-    # Adicionando argumentos de conexão caso precise de timeout ou ssl
-    engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 10})
+    # Configuração de conexão otimizada para Supabase
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,  # Verifica se a conexão está viva antes de usar
+        pool_size=10,
+        max_overflow=20
+    )
     
-    # Teste de conexão real
+    # Teste de conexão silencioso
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 except Exception as e:
-    st.error(f"❌ Erro de Conexão com o Banco de Dados: {e}")
-    st.warning("Dica: Se o erro for sobre SSL, adicione '?sslmode=require' ao final da sua URL nas Secrets.")
+    st.error(f"Erro ao conectar ao banco: {e}")
+    st.info("Verifique se a senha nas Secrets está correta e apenas com letras/números.")
     st.stop()
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
@@ -42,7 +42,7 @@ def init_db():
 
 init_db()
 
-# --- BACKUP (MANTEMOS O BACKUP LOCAL PARA SEGURANÇA) ---
+# --- BACKUP ---
 def verificar_e_limpar_mensal():
     hoje = datetime.now()
     if hoje.day == 1:
