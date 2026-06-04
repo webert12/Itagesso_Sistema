@@ -6,13 +6,24 @@ import os
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
-# --- CONFIGURAÇÃO ---
-# Agora o sistema busca a senha nas configurações do Streamlit Cloud
+# --- CONFIGURAÇÃO E DIAGNÓSTICO ---
+# Bloco de diagnóstico para identificar falhas de conexão imediatamente
 try:
+    if "DATABASE_URL" not in st.secrets:
+        st.error("Erro: A chave 'DATABASE_URL' não foi encontrada nas Secrets do Streamlit.")
+        st.stop()
+        
     DATABASE_URL = st.secrets["DATABASE_URL"]
-    engine = create_engine(DATABASE_URL)
+    
+    # Adicionando argumentos de conexão caso precise de timeout ou ssl
+    engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 10})
+    
+    # Teste de conexão real
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
 except Exception as e:
-    st.error("Erro: A configuração do banco de dados não foi encontrada nas Secrets.")
+    st.error(f"❌ Erro de Conexão com o Banco de Dados: {e}")
+    st.warning("Dica: Se o erro for sobre SSL, adicione '?sslmode=require' ao final da sua URL nas Secrets.")
     st.stop()
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
