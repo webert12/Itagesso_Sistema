@@ -2,28 +2,53 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
+import os
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
+import socket
+from urllib.parse import urlparse
 
-# --- CONFIGURAÇÃO ROBUSTA ---
+# --- CONFIGURAÇÃO ROBUSTA (CORREÇÃO DE IPV6 PARA IPV4) ---
 try:
+    if "DATABASE_URL" not in st.secrets:
+        st.error("Erro: A chave 'DATABASE_URL' não foi encontrada nas Secrets.")
+        st.stop()
+        
     DATABASE_URL = st.secrets["DATABASE_URL"]
     
-    # Configuração de conexão otimizada para Supabase
+    # Extrai o host e a porta da sua URL de conexão
+    parsed_url = urlparse(DATABASE_URL)
+    hostname = parsed_url.hostname
+    port = parsed_url.port or 5432
+    
+    # Configuração padrão de segurança
+    connect_args = {"sslmode": "require"}
+    
+    # Força o sistema a resolver o endereço usando apenas IPv4
+    try:
+        enderecos = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+        ipv4_direto = enderecos[0][4][0]
+        # Injeta o IP direto para o driver de conexão ignorar o IPv6 problemático
+        connect_args["hostaddr"] = ipv4_direto
+    except Exception:
+        # Se a conversão falhar, deixa o sistema tentar o método padrão
+        pass
+
+    # Cria a engine de forma segura
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"sslmode": "require"},
-        pool_pre_ping=True,  # Verifica se a conexão está viva antes de usar
+        connect_args=connect_args,
+        pool_pre_ping=True,  # Evita queda por inatividade
         pool_size=10,
         max_overflow=20
     )
     
-    # Teste de conexão silencioso
+    # Teste de conexão real e silencioso
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}")
-    st.info("Verifique se a senha nas Secrets está correta e apenas com letras/números.")
+    st.info("Se o erro persistir, certifique-se de que a senha nas Secrets possui apenas letras e números.")
     st.stop()
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
@@ -162,7 +187,7 @@ def page_transacoes():
             with engine.connect() as conn:
                 conn.execute(text("INSERT INTO movimentacoes (produto, tipo, quantidade, valor_total, data) VALUES (:prod, :tipo, :qtd, :total, CURRENT_DATE)"), 
                              {"prod": prod, "tipo": tipo, "qtd": qtd, "total": qtd*pu})
-                if tipo == "Venda": conn.execute(text("UPDATE estoque SET quantidade = quantidade - :qtd WHERE produto = :prod"), {"qtd": qtd, "prod": prod})
+                if tipo == "Venda": conn.execute(text("UPDATE estoque SET quantidade = quantidade - :qtd WHERE product = :prod"), {"qtd": qtd, "prod": prod})
                 else: conn.execute(text("UPDATE estoque SET quantidade = quantidade + :qtd WHERE produto = :prod"), {"qtd": qtd, "prod": prod})
                 conn.commit(); st.success("Sucesso!"); st.rerun()
 
