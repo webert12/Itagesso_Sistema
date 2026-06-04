@@ -8,7 +8,8 @@ from sqlalchemy import create_engine, text
 
 # --- CONFIGURAÇÃO ---
 # MUDANÇA: Substitua pela string de conexão do seu Supabase/Postgres
-DATABASE_URL = "postgresql://USUARIO:SENHA@HOST:PORTA/NOME_DO_BANCO"
+DATABASE_URL = "postgresql://usuario:senha@seu-link-do-supabase:5432/nome-do-banco"
+
 engine = create_engine(DATABASE_URL)
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
