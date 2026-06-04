@@ -7,10 +7,13 @@ from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
 # --- CONFIGURAÇÃO ---
-# MUDANÇA: Substitua pela string de conexão do seu Supabase/Postgres
-DATABASE_URL = "postgresql://usuario:senha@seu-link-do-supabase:5432/nome-do-banco"
-
-engine = create_engine(DATABASE_URL)
+# Agora o sistema busca a senha nas configurações do Streamlit Cloud
+try:
+    DATABASE_URL = st.secrets["DATABASE_URL"]
+    engine = create_engine(DATABASE_URL)
+except Exception as e:
+    st.error("Erro: A configuração do banco de dados não foi encontrada nas Secrets.")
+    st.stop()
 
 st.set_page_config(page_title="ItaGesso Gestão", layout="wide", page_icon="🏗️")
 st.markdown("""<style>#MainMenu, footer, header {visibility: hidden;} [data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
@@ -35,7 +38,6 @@ def verificar_e_limpar_mensal():
         mes_passado = (hoje.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
         arquivo_backup = f"backup_{mes_passado}.csv"
         
-        # PostgreSQL usa TO_CHAR em vez de strftime
         df_old = pd.read_sql(f"SELECT * FROM movimentacoes WHERE TO_CHAR(data, 'YYYY-MM') = '{mes_passado}'", engine)
         
         if not df_old.empty:
